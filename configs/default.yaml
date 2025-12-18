@@ -1,0 +1,107 @@
+# Low-Light Enhancement Diffusion Model Configuration
+# =================================================
+
+# Model Architecture
+model:
+  variant: "small"  # tiny, small, base, large
+  image_size: 256
+  in_channels: 6    # image + condition (concat mode)
+  out_channels: 3
+  
+  # UNet config
+  unet:
+    base_channels: 32
+    channel_multipliers: [1, 2, 4, 8]  # → [32, 64, 128, 256]
+    num_res_blocks: 2
+    expansion_ratio: 4  # Inverted residual expansion
+    
+    # Attention
+    attention_resolutions: [16, 8]  # Apply attention at these resolutions
+    num_attention_heads: 4
+    use_linear_attention: true  # O(n) attention for mobile
+    
+    # SE module
+    use_se: true
+    se_ratio: 0.25
+    
+    # Quantization-friendly
+    quantization_friendly: true
+
+# Diffusion / LCM
+diffusion:
+  num_train_timesteps: 1000
+  beta_schedule: "scaled_linear"
+  beta_start: 0.00085
+  beta_end: 0.012
+  prediction_type: "epsilon"  # or "v_prediction"
+  rescale_betas_zero_snr: true  # Important for dark images
+  
+  # LCM
+  num_inference_steps: 4  # 4, 6, or 8 recommended
+  original_inference_steps: 50  # Teacher model steps
+
+# Training
+training:
+  epochs: 100
+  batch_size: 8
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  gradient_clip: 1.0
+  
+  # LR Schedule
+  scheduler: "cosine"  # cosine or onecycle
+  warmup_epochs: 5
+  min_lr: 1.0e-6
+  
+  # Mixed Precision
+  use_amp: true
+  
+  # EMA
+  use_ema: true
+  ema_decay: 0.9999
+  
+  # Loss
+  loss_type: "mse"  # mse, huber, l1
+  
+  # Logging
+  log_interval: 100
+  save_interval: 5
+  sample_interval: 1
+
+# Data
+data:
+  train_dir: "data/lol/train"
+  val_dir: "data/lol/test"
+  num_workers: 4
+  pin_memory: true
+  
+  # Augmentation
+  augment: true
+  random_crop: true
+  horizontal_flip: true
+  vertical_flip: false
+
+# Export
+export:
+  format: "tflite"  # onnx, tflite
+  quantization: "fp16"  # fp16, int8, int8_dynamic
+  opset_version: 17  # ONNX opset
+  
+  # Android
+  android:
+    num_threads: 4
+    use_gpu: true
+    use_nnapi: false
+
+# Paths
+paths:
+  output_dir: "outputs"
+  checkpoint_dir: "checkpoints"
+  export_dir: "exports"
+
+# Logging
+logging:
+  use_wandb: false
+  project: "low-light-diffusion"
+  run_name: null
+
