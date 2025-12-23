@@ -36,8 +36,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Low-Light Enhancement Model")
     
     # Data
-    parser.add_argument("--data_dir", type=str, required=True, help="Dataset directory")
-    parser.add_argument("--val_dir", type=str, default=None, help="Validation directory")
+    parser.add_argument("--data_dir", type=str, default="src/data/our485", 
+                        help="Dataset directory (default: src/data/our485)")
+    parser.add_argument("--val_dir", type=str, default="src/data/eval15", 
+                        help="Validation directory (default: src/data/eval15)")
     
     # Model
     parser.add_argument("--variant", type=str, default="small", 

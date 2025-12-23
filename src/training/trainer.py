@@ -15,11 +15,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import autocast
+try:
+    from torch.amp import GradScaler
+except ImportError:
+    from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-import wandb
+try:
+    import wandb
+    HAS_WANDB = True
+except ImportError:
+    HAS_WANDB = False
+    wandb = None
 
 from ..models import LowLightDiffusion
 
@@ -151,9 +160,10 @@ class LowLightTrainer:
         warmup_steps = len(train_loader) * self.config.warmup_epochs
         
         if self.config.scheduler_type == "cosine":
+            T_max = max(1, total_steps - warmup_steps)  # En az 1 olmalı
             self.scheduler = CosineAnnealingLR(
                 self.optimizer,
-                T_max=total_steps - warmup_steps,
+                T_max=T_max,
                 eta_min=self.config.min_lr,
             )
         else:
@@ -165,7 +175,13 @@ class LowLightTrainer:
             )
         
         # Mixed precision
-        self.scaler = GradScaler() if self.config.use_amp else None
+        if self.config.use_amp:
+            try:
+                self.scaler = GradScaler('cuda')  # New API
+            except TypeError:
+                self.scaler = GradScaler()  # Old API fallback
+        else:
+            self.scaler = None
         
         # EMA
         self.ema = EMAModel(self.model, self.config.ema_decay) if self.config.use_ema else None
@@ -183,11 +199,15 @@ class LowLightTrainer:
         
         # Wandb
         if self.config.use_wandb:
-            wandb.init(
-                project=self.config.wandb_project,
-                name=self.config.wandb_run_name,
-                config=self.config.__dict__,
-            )
+            if not HAS_WANDB:
+                print("Warning: wandb not installed. Logging disabled.")
+                self.config.use_wandb = False
+            else:
+                wandb.init(
+                    project=self.config.wandb_project,
+                    name=self.config.wandb_run_name,
+                    config=self.config.__dict__,
+                )
         
         # Resume
         if self.config.resume_from:
@@ -262,7 +282,7 @@ class LowLightTrainer:
             # Forward
             self.optimizer.zero_grad()
             
-            if self.config.use_amp:
+            if self.config.use_amp and self.device.type == "cuda":
                 with autocast():
                     loss = self.model.compute_loss(
                         low_light, normal_light, 

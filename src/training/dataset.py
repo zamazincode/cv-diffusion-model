@@ -63,29 +63,123 @@ class LowLightDataset(Dataset):
         self.augment = augment
         self.paired = paired
         
+        # Klasör varlığını kontrol et
+        if not self.root.exists():
+            raise FileNotFoundError(
+                f"Dataset root directory not found: {self.root}\n"
+                f"Please download the dataset and ensure the path is correct.\n"
+                f"Expected structure:\n"
+                f"  {self.root}/\n"
+                f"    {low_dir}/\n"
+                f"      image1.png\n"
+                f"      ...\n"
+                f"    {high_dir}/\n"
+                f"      image1.png\n"
+                f"      ..."
+            )
+        
         # Görüntü yollarını bul
         low_path = self.root / low_dir
         high_path = self.root / high_dir
         
+        # Alternatif klasör yapılarını dene
+        if not low_path.exists():
+            # LOL dataset yapısı: our485/low veya eval15/low
+            # Eğer root zaten our485/eval15 ise, direkt low/high klasörlerini ara
+            possible_low_dirs = [low_dir, "low", "lowlight", "dark"]
+            possible_high_dirs = [high_dir, "high", "normal", "bright"]
+            
+            for alt_low in possible_low_dirs:
+                alt_path = self.root / alt_low
+                if alt_path.exists():
+                    low_path = alt_path
+                    low_dir = alt_low
+                    break
+            
+            for alt_high in possible_high_dirs:
+                alt_path = self.root / alt_high
+                if alt_path.exists():
+                    high_path = alt_path
+                    high_dir = alt_high
+                    break
+        
+        if not low_path.exists():
+            raise FileNotFoundError(
+                f"Low-light images directory not found: {low_path}\n"
+                f"Tried: {[self.root / d for d in ['low', 'lowlight', 'dark']]}\n"
+                f"Current directory structure:\n"
+                f"{self._list_directory_structure(self.root)}"
+            )
+        
+        if not high_path.exists():
+            raise FileNotFoundError(
+                f"High-light images directory not found: {high_path}\n"
+                f"Tried: {[self.root / d for d in ['high', 'normal', 'bright']]}\n"
+                f"Current directory structure:\n"
+                f"{self._list_directory_structure(self.root)}"
+            )
+        
         # Low-light görüntüleri
         self.low_images = sorted([
             f for f in low_path.iterdir()
-            if f.suffix.lower() in extensions
+            if f.is_file() and f.suffix.lower() in extensions
         ])
         
         # High-light görüntüleri
         self.high_images = sorted([
             f for f in high_path.iterdir()
-            if f.suffix.lower() in extensions
+            if f.is_file() and f.suffix.lower() in extensions
         ])
+        
+        if len(self.low_images) == 0:
+            raise ValueError(
+                f"No images found in {low_path}\n"
+                f"Supported extensions: {extensions}"
+            )
+        
+        if len(self.high_images) == 0:
+            raise ValueError(
+                f"No images found in {high_path}\n"
+                f"Supported extensions: {extensions}"
+            )
         
         # Eşleştirme kontrolü
         if paired:
-            assert len(self.low_images) == len(self.high_images), \
-                f"Image count mismatch: {len(self.low_images)} low vs {len(self.high_images)} high"
+            if len(self.low_images) != len(self.high_images):
+                print(f"Warning: Image count mismatch: {len(self.low_images)} low vs {len(self.high_images)} high")
+                print(f"Using minimum count: {min(len(self.low_images), len(self.high_images))}")
+                # Minimum sayıya göre kırp
+                min_count = min(len(self.low_images), len(self.high_images))
+                self.low_images = self.low_images[:min_count]
+                self.high_images = self.high_images[:min_count]
         
         # Augmentation pipeline
         self.transform = self._get_transforms()
+    
+    def _list_directory_structure(self, path: Path, max_depth: int = 2, current_depth: int = 0) -> str:
+        """Klasör yapısını listele (hata mesajları için)"""
+        if current_depth >= max_depth:
+            return ""
+        
+        lines = []
+        try:
+            items = sorted(path.iterdir())
+            for item in items[:10]:  # İlk 10 öğe
+                if item.is_dir():
+                    lines.append(f"  {item.name}/")
+                    if current_depth < max_depth - 1:
+                        sub_lines = self._list_directory_structure(item, max_depth, current_depth + 1)
+                        for sub_line in sub_lines.split('\n'):
+                            if sub_line.strip():
+                                lines.append(f"    {sub_line}")
+                else:
+                    lines.append(f"  {item.name}")
+            if len(items) > 10:
+                lines.append(f"  ... ({len(items) - 10} more items)")
+        except Exception as e:
+            lines.append(f"  (Error listing: {e})")
+        
+        return '\n'.join(lines)
     
     def _get_transforms(self) -> A.Compose:
         """Augmentation pipeline oluştur"""
