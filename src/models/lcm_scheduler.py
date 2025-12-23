@@ -233,7 +233,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             
             # Deterministic (DDIM) veya stochastic (DDPM) seçimi
             # LCM genelde deterministic kullanır
-            noise = torch.randn_like(sample, generator=generator)
+            # Not: generator parametresi bazı PyTorch versiyonlarında desteklenmiyor
+            noise = torch.randn_like(sample)
             
             prev_sample = (
                 alpha_prod_t_prev ** 0.5 * pred_original_sample +

@@ -54,7 +54,9 @@ def parse_args():
                         help="LCM inference steps")
     
     # Device
-    parser.add_argument("--device", type=str, default="cuda",
+    import torch
+    default_device = "cuda" if torch.cuda.is_available() else "cpu"
+    parser.add_argument("--device", type=str, default=default_device,
                         help="Device (cuda/cpu)")
     
     return parser.parse_args()
@@ -71,7 +73,9 @@ def load_pytorch_model(checkpoint_path: str, variant: str, image_size: int, devi
     )
     
     if checkpoint_path:
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        # CPU'ya yükle (CUDA yoksa)
+        map_location = "cpu" if device == "cpu" or not torch.cuda.is_available() else device
+        checkpoint = torch.load(checkpoint_path, map_location=map_location)
         model.load_state_dict(checkpoint["model_state_dict"])
     
     model.to(device)
